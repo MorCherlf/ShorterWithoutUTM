@@ -73,11 +73,10 @@ func main() {
 	http.HandleFunc("/api/create", handleCreateShortURL)
 	http.HandleFunc("/api/delete/", handleDeleteShortURL)
 
-	port := fmt.Sprintf("%d", p.GetInt("main.port", 8080))
-	domain = p.GetString("main.domain", "http://localhost")
+	port := fmt.Sprintf(":%d", p.GetInt("main.port", 8080))
 	adminKey = p.GetString("admin.key", "DEFAULT_KEY")
 
-	server := &http.Server{Addr: ":" + port, Handler: nil}
+	server := &http.Server{Addr: port, Handler: nil}
 	go func() {
 		log.Printf("Server listening on port %s...\n", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
