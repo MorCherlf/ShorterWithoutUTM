@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"net"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/magiconair/properties"
@@ -73,16 +74,23 @@ func main() {
 	http.HandleFunc("/api/create", handleCreateShortURL)
 	http.HandleFunc("/api/delete/", handleDeleteShortURL)
 
-	port := fmt.Sprintf(":%d", p.GetInt("main.port", 8080))
 	adminKey = p.GetString("admin.key", "DEFAULT_KEY")
 
-	server := &http.Server{Addr: port, Handler: nil}
-	go func() {
-		log.Printf("Server listening on port %s...\n", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v\n", err)
-		}
-	}()
+    port := fmt.Sprintf(":%d", p.GetInt("main.port", 8080))
+
+    // 创建监听器
+    listener, err := net.Listen("tcp", port)
+    if err != nil {
+        log.Fatalf("Server error: %v\n", err)
+    }
+    // 启动 HTTP 服务器
+    server := &http.Server{Handler: nil}
+    go func() {
+        log.Printf("Server listening on port %s...\n", port)
+        if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+            log.Fatalf("Server error: %v\n", err)
+        }
+    }()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
