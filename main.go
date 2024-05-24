@@ -76,13 +76,16 @@ func main() {
 
 	adminKey = p.GetString("admin.key", "DEFAULT_KEY")
 
+    // 获取端口号和域名
     port := fmt.Sprintf(":%d", p.GetInt("main.port", 8080))
+    domain = p.GetString("main.domain", "http://localhost")
 
-    // 创建监听器
-    listener, err := net.Listen("tcp", port)
+    // 创建 TCP 监听器，同时监听 IPv4 和 IPv6
+    listener, err := net.Listen("tcp", port) 
     if err != nil {
         log.Fatalf("Server error: %v\n", err)
     }
+
     // 启动 HTTP 服务器
     server := &http.Server{Handler: nil}
     go func() {
@@ -122,44 +125,48 @@ func handleShortURL(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, shortURL.LongURL, http.StatusMovedPermanently)
 }
-
 func handleCreateShortURL(w http.ResponseWriter, r *http.Request) {
-	longURL := r.FormValue("long_url")
-	if longURL == "" {
-		http.Error(w, "Missing long_url parameter", http.StatusBadRequest)
-		return
-	}
+    longURL := r.FormValue("long_url")
+    if longURL == "" {
+        http.Error(w, `{"error": "Missing long_url parameter"}`, http.StatusBadRequest)
+        return
+    }
 
-	finalURL, err := getFinalURL(longURL)
-	if err != nil {
-		http.Error(w, "Failed to resolve redirection", http.StatusInternalServerError)
-		return
-	}
+    finalURL, err := getFinalURL(longURL)
+    if err != nil {
+        http.Error(w, `{"error": "Failed to resolve redirection"}`, http.StatusInternalServerError)
+        return
+    }
 
-	cleanURL := removeQueryParams(finalURL)
-	shortCode := generateShortCode()
+    cleanURL := removeQueryParams(finalURL)
+    shortCode := generateShortCode()
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
+    dbMutex.Lock()
+    defer dbMutex.Unlock()
 
-	var existingShortCode string
-	err = db.QueryRow("SELECT short_code FROM short_urls WHERE long_url = ?", cleanURL).Scan(&existingShortCode)
-	if err == nil {
-		fmt.Fprintf(w, "Short URL already exists: %s\n", domain+existingShortCode)
-		return
-	} else if err != sql.ErrNoRows {
-		http.Error(w, "Failed to check for existing short URL", http.StatusInternalServerError)
-		return
-	}
+    var existingShortCode string
+    err = db.QueryRow("SELECT short_code FROM short_urls WHERE long_url = ?", cleanURL).Scan(&existingShortCode)
+    if err == nil {
+        // 短链接已存在，直接返回
+        w.Header().Set("Content-Type", "application/json")
+        fmt.Fprintf(w, `{"short_url": "%s"}`, domain+"/"+existingShortCode)
+        return
+    } else if err != sql.ErrNoRows {
+        http.Error(w, `{"error": "Failed to check for existing short URL"}`, http.StatusInternalServerError)
+        return
+    }
 
-	_, err = db.Exec("INSERT INTO short_urls (short_code, long_url) VALUES (?, ?)", shortCode, cleanURL)
-	if err != nil {
-		http.Error(w, "Failed to create short URL", http.StatusInternalServerError)
-		return
-	}
+    _, err = db.Exec("INSERT INTO short_urls (short_code, long_url) VALUES (?, ?)", shortCode, cleanURL)
+    if err != nil {
+        http.Error(w, `{"error": "Failed to create short URL"}`, http.StatusInternalServerError)
+        return
+    }
 
-	fmt.Fprintf(w, "Short URL created: %s\n", domain+shortCode)
+    // 返回 JSON 格式的完整短链接
+    w.Header().Set("Content-Type", "application/json")
+    fmt.Fprintf(w, `{"short_url": "%s"}`, domain+"/"+shortCode)
 }
+
 
 func handleDeleteShortURL(w http.ResponseWriter, r *http.Request) {
 	shortCode := strings.TrimPrefix(r.URL.Path, "/api/delete/")
